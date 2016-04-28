@@ -144,10 +144,11 @@ def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1
     # read in the training trials from the input file
     training_trials = read_input_trials(training_file)
 
+    rnd.seed(seed)
+
     for i in xrange(iterations):
 
         # the order of presentation impacts learning, so training trials are randomly shuffled before each simulation
-        rnd.seed(seed)
         rnd.shuffle(training_trials)
 
         ith_associations = defaultdict(dict)
@@ -268,8 +269,9 @@ def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81
     :param seed:            allows to set the seed for the random shuffling of training trials, in case it is
                             important to reproduce exact results. The default is set to None to ensure maximal
                             randomness. In the CogSci 2016 paper we report results with seed=6.
-                            CAVEAT: Given that hypotheses can or cannot be recalled with certain probabilities, the
-                            learning outcome may still vary despite having set a seed.
+                            CAVEAT: note that the final outcome also depends on the probability of recalling a
+                            hypothesis at every learning trial, which is not seeded. Thus, even using the same seed
+                            as we used in the paper, different results might be obtained for this learner.
     :return avg_hypotheses: a dictionary of dictionaries containing the proportion of learners that selected each
                             cue-outcome hypothesis over all simulations.
 
@@ -292,13 +294,14 @@ def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81
     hypotheses = defaultdict(dict)
     avg_hypotheses = defaultdict(dict)
 
+    rnd.seed(seed)
+
     for i in xrange(iterations):
 
         ith_hypotheses = {}                                                     # contains formed hypothesis
         ith_recalled = defaultdict(dict)                                        # contains recalled hypothesis
 
         # the order of presentation impacts learning, so training trials are randomly shuffled before each simulation
-        rnd.seed(seed)
         rnd.shuffle(training_trials)
 
         for trial in training_trials:
@@ -394,6 +397,8 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
 
     outcomes_given_cues = defaultdict(dict)
 
+    rnd.seed(seed)
+
     for i in xrange(iterations):
 
         outcomes = set()
@@ -401,7 +406,6 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
         ith_associations = defaultdict(dict)
 
         # the order of presentation impacts learning, so training trials are randomly shuffled before each simulation
-        rnd.seed(seed)
         rnd.shuffle(training_trials)
 
         for trial in training_trials:
@@ -486,5 +490,9 @@ def main():
     print
     hypothesis_testing_model('./training_dataSet.txt', 200)
 
+
+########################################################################################################################
+
+
 if __name__ == '__main__':
-  main()
+    main()
