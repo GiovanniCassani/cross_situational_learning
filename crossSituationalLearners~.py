@@ -179,12 +179,12 @@ def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1
                 # the association score accordingly. If a cue is not present in the current learning trial, the change
                 # in for each cue-outcome association involving the absent cue is 0 and we don't compute it. On the
                 # contrary, change in association from present cues to all outcomes, present and absent, are computed
-                if outcome in set(trial_outcomes):
-                    Lam = lam
-                else:
-                    Lam = 0
-                
-                for cue in set(trial_cues):    
+                for cue in set(trial_cues):
+                    if outcome in set(trial_outcomes):
+                        Lam = lam
+                    else:
+                        Lam = 0
+                        
                     delta_v = alpha * beta * (Lam - v_total)
                     # update each cue-outcome associations for cues that are present in the current learning trial
                     try:
