@@ -2,26 +2,32 @@ __author__ = 'GCassani'
 
 import numpy as np
 import random as rnd
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 
-def read_input_trials(input_file):
+def read_input_trials(input_file, header=True, sep1=' ', sep2='_'):
 
     """
-    :param input_file:  a .txt file containing two columns: cues in the first and outcomes in the second, separated by
-                        space. Each column can contain multiple items, which should be separated by an underscore ('_')
-                        A header might be present, which should start with the word 'Cues'.
-    :return trials:     a list containing each line of the input file.
-                        [This is memory inefficient, I know, but given the very limited size of the input here I didn't
-                        bother too much about this issue.]
+    :param input_file:  a .txt file containing two columns. The first column is assumed to contain cues, while the
+                        second columns is assumed to contain outcomes.
+    :param header:      a boolean specifying whether the file contains a header
+    :param sep1:        a string specifying which character divide the two columns of which the input file must consist
+    :param sep2:        a string specifying which character is used to separate different cues and outcomes whithin the
+                        same line. Default value is assumed to be the underscore
+    :return trials:     a list of tuples, consisting of a list and a set. The list contains cues, and allows duplicates;
+                        the set contains outcomes, thereby removing all duplicates that may exist in the second column
+                        of each line of the input file.
     """
 
     trials = []
 
     with open(input_file, 'r+') as training:
+        if header:
+            next(training)
         for line in training:
-            if not line.startswith('Cues'):
-                trials.append(line.strip())
+            trial_cues = line.strip().split(sep1)[0].split(sep2)
+            trial_outcomes = set(line.strip().split(sep1)[1].split(sep2))
+            trials.append((trial_cues, trial_outcomes))
 
     return trials
 
@@ -29,7 +35,25 @@ def read_input_trials(input_file):
 ########################################################################################################################
 
 
-def print_associations(associations, flip=True):
+def print_cue_outcome_associations(avg_associations, n):
+
+    """
+    :param avg_associations:    a dictionary of dictionaries, where the bottom-level values are tuples consisting of two
+                                numbers
+    :param n:                   the number of decimal positions to which each number is rounded
+    """
+
+    for k1 in sorted(avg_associations.keys()):
+        for k2 in sorted(avg_associations[k1].keys()):
+            # print each cue-outcome pair with the corresponding association and its standard deviation
+            print '\t'.join([k1, k2, str(round(avg_associations[k1][k2][0], n)),
+                             str(round(avg_associations[k1][k2][1], n))])
+
+
+########################################################################################################################
+
+
+def get_average_associations(associations, flip=False, print_output=False):
 
     """
     :param associations:        a dictionary of dictionaries, where the top level keys are cues, the second level keys
@@ -37,6 +61,8 @@ def print_associations(associations, flip=True):
                                 over the desired number of iterations
     :param flip:                a binary specifying whether cue-outcome associations should be printed and returned as
                                 such or flipped i.e. outcome-cue
+    :param print_output:        a boolean specifying whether average associations should be printed after having been
+                                computed
     :return avg_associations:   a dictionary of dictionaries where top level keys can be either cues or outcomes
                                 (depending on the value of flip), second level keys are outcomes or cues (depending of
                                 what are top level keys), and values consist of a tuple containing the average
@@ -50,18 +76,15 @@ def print_associations(associations, flip=True):
 
     avg_associations = defaultdict(dict)
 
-    for c in sorted(associations.keys()):
-        for o in sorted(associations[c].keys()):
+    for k1 in sorted(associations.keys()):
+        for k2 in sorted(associations[k1].keys()):
             if flip:
-                avg_associations[o][c] = ( np.mean(associations[c][o]), np.std(associations[c][o]) )
+                avg_associations[k2][k1] = (np.mean(associations[k1][k2]), np.std(associations[k1][k2]))
             else:
-                avg_associations[c][o] = ( np.mean(associations[c][o]), np.std(associations[c][o]) )
+                avg_associations[k1][k2] = (np.mean(associations[k1][k2]), np.std(associations[k1][k2]))
 
-    for k1 in sorted(avg_associations.keys()):
-        for k2 in sorted(avg_associations[k1].keys()):
-            # print each cue-outcome pair with the corresponding average association and its standard deviation
-            print '\t'.join([k1, k2, str(round(avg_associations[k1][k2][0], 3)),
-                             str(round(avg_associations[k1][k2][1], 3))])
+    if print_output:
+        print_cue_outcome_associations(avg_associations, 3)
 
     return avg_associations
 
@@ -94,7 +117,19 @@ def store_current_associations(curr_associations, associations):
 ########################################################################################################################
 
 
-def form_random_hypothesis(outcome,hypotheses,curr_outcomes,curr_cues):
+def form_random_hypothesis(outcome, hypotheses, curr_outcomes, curr_cues):
+
+    """
+    :param outcome:         a string specifying which outcome is being considered from the current learning trial
+    :param hypotheses:      a dictionary containing cue-outcome hypothesis: keys of the dictionaries are outcomes, and
+                            values are cues that are currently hypothesized to match the outcomes
+    :param curr_outcomes:   a list containing all the outcomes that are present in the current learning trial
+    :param curr_cues:       a list containing all the cues that are present in the current learning trial
+    :return hypotheses:     the input dictionary, that now contains a new hypothesis involving one of the outcomes that
+                            were present in the current learning trial: the outcome has been selected at random among
+                            curr_outcomes, while the cue that is now hypothesized to match the outcome has been selected
+                            at random from curr_cues
+    """
 
     del hypotheses[outcome]                                 # remove the hypothesis from memory,
     new_o = rnd.randint(1, len(curr_outcomes)) - 1          # select a new outcome at random
@@ -102,18 +137,100 @@ def form_random_hypothesis(outcome,hypotheses,curr_outcomes,curr_cues):
     new_sel = rnd.randint(1, len(curr_cues)) - 1            # select a new cue at random
     hypotheses[new_outcome] = curr_cues[new_sel]            # form a new cue-outcome hypotheses
 
+    return hypotheses
+
 
 ########################################################################################################################
 
 
-def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1, seed=None):
+def compute_total_activation(matrix, outcome, trial_cues, lam):
 
     """
-    :param training_file:       a .txt. file containing two columns, the first consists of cues, the second of outcome.
-                                Multiple cues and outcomes can be passed, in which case they should be separated by an
-                                underscore ('_').
-    :param iterations:          an integer specifying the number if simulations to run: when learning depends on the order
-                                of the training trials, running multiple iterations ensures that the learned
+    :param matrix:      a dictionary of dictionaries, where first-level keys are outcomes, second-level keys are cues
+                        and values are numbers indicating the degree of association between each cue and outcome pair
+    :param outcome:     a string indicating the outcome being considered
+    :param trial_cues:  a dictionary containing the cues that are present in the current learning trial as keys, and
+                        the number of times each cue occurs as values
+    :return v_total:    the total activation that goes from the cues that are present in the learning trial to the
+                        outcome being considered
+    """
+
+    v_total = 0
+    for cue, count in trial_cues.items():
+        try:
+            # add to v_total the amount of activation of each cue, weighted by the number of times the cue occurs in the
+            # current learning trial
+            v_total += matrix[outcome][cue] * count
+        except KeyError:
+            matrix[outcome][cue] = 0
+
+    # check that the total amount of activation doesn't exceed the value chosen for the lambda parameter: since the
+    # lambda parameter specifies the maximum amount of activation each outcome can bear, a v_total that is higher than
+    # lambda corresponds to an over-prediction of the presence of the outcome which causes the model to collapse.
+    if v_total > lam:
+        print trial_cues, outcome
+        print v_total
+        raise ValueError('Something went wrong! The total amount of activation cannot exceed one: ' +
+                         'try lowering the learning rate, alpha, or the cue salience parameter, beta')
+    else:
+        return v_total
+
+########################################################################################################################
+
+
+def update_outcome_weights(matrix, outcome, trial_cues, trial_outcomes, lam, ab):
+
+    """
+    :param matrix:          a dictionary of dictionaries, where first-level keys are outcomes, second-level keys are
+                            cues and values are numbers indicating the degree of association between each cue and
+                            outcome pair
+    :param outcome:         a string indicating the outcome being considered
+    :param trial_cues:      a dictionary containing the cues that are present in the current learning trial as keys, and
+                            the number of times each cue occurs as values
+    :param trial_outcomes:  a set containing the outcomes that are present in the current learning trial
+    :param lam:             a number indicating the maximum amount of activation an outcome can bear
+    :param ab:              the learning rate
+    :return matrix:         an updated version of the input matrix, where cue-outcome associations have been updated
+                            using the Rescorla-Wagner model of learning
+    """
+
+    # get the total amount of activation for the outcome being considered given the cues that occur in the current
+    # learning trial
+    v_total = compute_total_activation(matrix, outcome, trial_cues, lam)
+
+    # if the outcome doesn't occur in the current trial, set the value of lambda to 0
+    if outcome not in trial_outcomes:
+        lam = 0
+    delta_v = ab * (lam - v_total)
+
+    # for each cue from the current learning trial, update its association to the outcome being considered
+    for cue in trial_cues:
+        try:
+            matrix[outcome][cue] += delta_v
+        except KeyError:
+            matrix[outcome][cue] = delta_v
+
+        if matrix[outcome][cue] > 1:
+            print outcome, cue, matrix[outcome][cue]
+            raise ValueError('An outcome can only sustain an activation of 1 and it looks like the ' +
+                             'activation from a single cue is higher than this threshold. Something ' +
+                             'went wrong, try lowering the learning rate, alpha, or the cue salience ' +
+                             'parameter, beta.')
+
+    return matrix
+
+
+########################################################################################################################
+
+
+def discriminative_learner(training_trials, iterations, alpha=0.2, beta=0.1, lam=1,
+                           seed=None, print_output=False):
+
+    """
+    :param training_trials:     a list of tuples, consisting of a list and a set. The list contains cues, the set
+                                contains outcomes.
+    :param iterations:          an integer specifying the number if simulations to run: when learning depends on the
+                                order of the training trials, running multiple iterations ensures that the learned
                                 associations are not due to chance.
     :param alpha:               cue salience. For simplicity, we assume that every cue has the same salience, so
                                 changing the value of this parameter does not affect the relative strength of
@@ -126,6 +243,8 @@ def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1
     :param seed:                allows to set the seed for the random shuffling of training trials, in case it is
                                 important to reproduce exact results. The default is set to None to ensure maximal
                                 randomness. In the CogSci 2016 paper we report results with seed=6.
+    :param print_output:        a boolean specifying whether average associations should be printed after having been
+                                computed
     :return avg_associations:   a dictionary of dictionaries containing average associations and their standard
                                 deviations, computed over the desired number of iterations.
 
@@ -135,14 +254,9 @@ def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1
     incrementally updates associations between cues and outcome.
     """
 
-    print
-    print "Incremental Naive Discriminative Learner (Baayen et al, 2011): "
-    print
-
     associations = defaultdict(dict)
 
-    # read in the training trials from the input file
-    training_trials = read_input_trials(training_file)
+    ab = alpha * beta
 
     rnd.seed(seed)
 
@@ -156,46 +270,21 @@ def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1
 
         for trial in training_trials:
 
-            # get each single cue and each single outcome from the current training trial
-            trial_cues = trial.split(' ')[0].split('_')
-            trial_outcomes = trial.split(' ')[1].split('_')
-
+            trial_cues = Counter(trial[0])
+            trial_outcomes = trial[1]
             # keep track of all outcomes that have been encountered so far
-            outcomes = outcomes.union(set(trial_outcomes))
+            outcomes.update(trial_outcomes)
 
-            # compute total activation for cues in the current trial, separately for each outcome:
-            # this step sums all weights going from cues in the current trial to a single outcome and uses the total
-            # weight to predict whether the outcome is going to be present or absent in the current learning trial.
-            # If a cue-outcome association is new, its weight is 0.
+            #
             for outcome in outcomes:
-                v_total = 0
-                for cue in trial_cues:
-                    try:
-                        v_total += ith_associations[cue][outcome]
-                    except KeyError:
-                        ith_associations[cue][outcome] = 0
 
-                # compute association change for each cue-outcome relation for every cue in the current trial and update
-                # the association score accordingly. If a cue is not present in the current learning trial, the change
-                # in for each cue-outcome association involving the absent cue is 0 and we don't compute it. On the
-                # contrary, change in association from present cues to all outcomes, present and absent, are computed
-                if outcome in set(trial_outcomes):
-                    Lam = lam
-                else:
-                    Lam = 0
-                
-                for cue in set(trial_cues):    
-                    delta_v = alpha * beta * (Lam - v_total)
-                    # update each cue-outcome associations for cues that are present in the current learning trial
-                    try:
-                        ith_associations[cue][outcome] += delta_v
-                    except KeyError:
-                        ith_associations[cue][outcome] = 0 + delta_v
+                ith_associations = update_outcome_weights(ith_associations, outcome, trial_cues, trial_outcomes, lam, ab)
 
         # store association scores at the end of the current iteration
         store_current_associations(ith_associations, associations)
 
-    avg_associations = print_associations(associations)
+    # get the average cue-outcome associations over the specified number of iterations
+    avg_associations = get_average_associations(associations, print_output=print_output)
 
     return avg_associations
 
@@ -203,15 +292,16 @@ def discriminative_learner(training_file, iterations, alpha=0.2, beta=0.1, lam=1
 ########################################################################################################################
 
 
-def hebbian_learner(training_file, lam=1):
+def hebbian_learner(training_trials, lam=1, print_output=False):
 
     """
-    :param training_file:       a .txt. file containing two columns, the first consists of cues, the second of outcome.
-                                Multiple cues and outcomes can be passed, in which case they should be separated by an
-                                underscore ('_').
+    :param training_trials:     a list of tuples, consisting of a list and a set. The list contains cues, the set
+                                contains outcomes.
     :param lam:                 change in association. The value does not affect the relative strength of cue-outcome
                                 associations but only their magnitudes, so it operates as a simple linear scaling
                                 factor.
+    :param print_output:        a boolean specifying whether average associations should be printed after having been
+                                computed
     :return avg_associations:   a dictionary of dictionaries containing average associations and their standard
                                 deviations, computed over the desired number of iterations.
 
@@ -222,19 +312,12 @@ def hebbian_learner(training_file, lam=1):
     random shuffling of the training trials.
     """
 
-    print
-    print "Hebbian learner (Yu & Smith, 2012): "
-    print
-
-    # read in the training trials from the input file
-    training_trials = read_input_trials(training_file)
-
     associations = defaultdict(dict)
 
     for trial in training_trials:
 
-        trial_cues = trial.split(' ')[0].split('_')
-        trial_outcomes = trial.split(' ')[1].split('_')
+        trial_cues = trial[0]
+        trial_outcomes = trial[1]
 
         # increment cue-outcome association every time the two co-occurs in a training trial. If a cue and an outcome
         # co-occur for the first time, initialize their association score to the update constant lambda
@@ -245,7 +328,7 @@ def hebbian_learner(training_file, lam=1):
                 except KeyError:
                     associations[cue][outcome] = lam
 
-    avg_associations = print_associations(associations)
+    avg_associations = get_average_associations(associations, flip=True, print_output=print_output)
 
     return avg_associations
 
@@ -253,30 +336,33 @@ def hebbian_learner(training_file, lam=1):
 ########################################################################################################################
 
 
-def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81, 0.90, 0.95, 0.99], seed=None):
+def hypothesis_testing_model(training_trials, iterations, alpha=0.6, alpha_1=(0.81, 0.90, 0.95, 0.99),
+                             seed=None, print_output=False):
 
     """
-    :param training_file:   a .txt. file containing two columns, the first consists of cues, the second of outcome.
-                            Multiple cues and outcomes can be passed, in which case they should be separated by an
-                            underscore ('_').
+    :param training_trials: a list of tuples, consisting of a list and a set. The list contains cues, the set contains
+                            outcomes.
     :param iterations:      an integer specifying the number if simulations to run: when learning depends on the order
                             of the training trials, running multiple iterations ensures that the learned
                             associations are not due to chance.
     :param alpha:           probability of recalling a hypothesis for the first time after it was formed. The default
                             value is taken from Trueswell et al (2013) where this model was shown to fit behavioral data
                             in a word learning task.
-    :param alpha_1:         probabilities of recalling a hypothesis after it was already successfully recalled once.
-                            The first value gives the probability of recalling a hypothesis twice, the second value
-                            gives the probability of recalling a hypothesis for the third time, and so on. The first
-                            value also comes from Trueswell et al (2013) while the following ones were made up: we
-                            stopped at five successful recall with p=0.99 to avoid certainty of recall and assuming that
-                            after a certain number of correct recalls the probability doesn't change anymore.
+    :param alpha_1:         a tuple containing probabilities of recalling a hypothesis after it was already successfully
+                            recalled once. The first value gives the probability of recalling a hypothesis twice, the
+                            second value gives the probability of recalling a hypothesis for the third time, and so on.
+                            The first value also comes from Trueswell et al (2013) while the following ones were made
+                            up: we stopped at five successful recall with p=0.99 to avoid certainty of recall and
+                            assuming that after a certain number of correct recalls the probability doesn't change
+                            anymore.
     :param seed:            allows to set the seed for the random shuffling of training trials, in case it is
                             important to reproduce exact results. The default is set to None to ensure maximal
                             randomness. In the CogSci 2016 paper we report results with seed=6.
                             CAVEAT: note that the final outcome also depends on the probability of recalling a
                             hypothesis at every learning trial, which is not seeded. Thus, even using the same seed
                             as we used in the paper, different results might be obtained for this learner.
+    :param print_output:    a boolean specifying whether average associations should be printed after having been
+                            computed
     :return avg_hypotheses: a dictionary of dictionaries containing the proportion of learners that selected each
                             cue-outcome hypothesis over all simulations.
 
@@ -291,11 +377,6 @@ def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81
 
     """
 
-    print
-    print "Hypothesis Testing Model (HTM) (Trueswell et al, 2013): "
-    print
-
-    training_trials = read_input_trials(training_file)
     hypotheses = defaultdict(dict)
     avg_hypotheses = defaultdict(dict)
 
@@ -311,9 +392,8 @@ def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81
 
         for trial in training_trials:
 
-            trial_cues = trial.split(' ')[0].split('_')
-            trial_cues = trial_cues[0:2]                                    # only pick objectA and objectB
-            trial_outcomes = trial.split(' ')[1].split('_')
+            trial_cues = trial[0][0:2]
+            trial_outcomes = list(trial[1])
 
             o = rnd.randint(1, len(trial_outcomes)) - 1                     # select an outcome at random
             outcome = trial_outcomes[o]
@@ -356,8 +436,9 @@ def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81
     # compute the proportion of learners that selected each hypothesis
     for o in hypotheses:
         for c in hypotheses[o]:
-            avg_hypotheses[o][c] = hypotheses[o][c] / float(iterations)
-            print o, c, avg_hypotheses[o][c]
+            avg_hypotheses[o][c] = (hypotheses[o][c] / float(iterations), 0)
+            if print_output:
+                print o, c, avg_hypotheses[o][c]
 
     return avg_hypotheses
 
@@ -365,14 +446,14 @@ def hypothesis_testing_model(training_file, iterations, alpha=0.6, alpha_1=[0.81
 ########################################################################################################################
 
 
-def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4, lam=10**-5, seed=None):
+def probabilistic_learner(training_trials, iterations, t0_prob=10 ** -4, beta=10 ** 4, lam=10 ** -5,
+                          seed=None, print_output=False):
 
     """
-    :param training_file:       a .txt. file containing two columns, the first consists of cues, the second of outcome.
-                                Multiple cues and outcomes can be passed, in which case they should be separated by an
-                                underscore ('_').
-    :param iterations:          an integer specifying the number if simulations to run: when learning depends on the order
-                                of the training trials, running multiple iterations ensures that the learned
+    :param training_trials:     a list of tuples, consisting of a list and a set. The list contains cues, the set
+                                contains outcomes.
+    :param iterations:          an integer specifying the number if simulations to run: when learning depends on the
+                                order of the training trials, running multiple iterations ensures that the learned
                                 associations are not due to chance.
     :param t0_prob:             posterior probability of outcome given cue at time 0, before cue and outcome co-occur
                                 in the learning trials, best computed as 1/beta, as indicated in fazly et al (2010).
@@ -382,6 +463,8 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
     :param seed:                allows to set the seed for the random shuffling of training trials, in case it is
                                 important to reproduce exact results. The default is set to None to ensure maximal
                                 randomness. In the CogSci 2016 paper we report results with seed=6.
+    :param print_output:        a boolean specifying whether average associations should be printed after having been
+                                computed
     :return avg_associations:   a dictionary of dictionaries containing average associations and their standard
                                 deviations, computed over the desired number of iterations.
 
@@ -391,14 +474,7 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
     outcome that is best supported by the data. Each cue has its own probability distribution that is shifted according
     to the evidence accumulated over subsequent trials: highly skewed probability distributions reflect higher
     confidence in which outcome matches a cue, while more flat distributions reflect higher uncertainty
-"""
-
-    print
-    print "Probabilistic Learner (Fazly et al, 2010): "
-    print
-
-    # read in the training trials from the input file
-    training_trials = read_input_trials(training_file)
+    """
 
     outcomes_given_cues = defaultdict(dict)
 
@@ -415,9 +491,8 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
 
         for trial in training_trials:
 
-            # get each single cue and each single outcome from the current training trial
-            trial_cues = trial.split(' ')[0].split('_')
-            trial_outcomes = trial.split(' ')[1].split('_')
+            trial_cues = trial[0]
+            trial_outcomes = trial[1]
 
             # keep track of all outcomes that have been encountered so far
             outcomes = outcomes.union(set(trial_outcomes))
@@ -478,7 +553,7 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
         store_current_associations(ith_outcomes_given_cues, outcomes_given_cues)
 
     # given that cue-outcome pairs were stored as outcome-cue pairs, the argument flip is set to False.
-    avg_posteriors = print_associations(outcomes_given_cues, flip=False)
+    avg_posteriors = get_average_associations(outcomes_given_cues, print_output=print_output)
 
     return avg_posteriors
 
@@ -486,12 +561,39 @@ def probabilistic_learner(training_file, iterations, t0_prob=10**-4, beta=10**4,
 ########################################################################################################################
 
 
+def cross_situational_learning(input_file, n_iter=200, seed=6, print_output=False):
+
+    """
+    :param input_file:          a .txt file containing two columns. The first column is assumed to contain cues, while
+                                the second columns is assumed to contain outcomes.
+    :param n_iter:              an integer stating how many iterations need to be performed to evaluate each learner
+    :param seed:                an integer to seed the random permutation of learning trials in the training set, for
+                                reproducibility
+    :param print_output:         a boolean specifying whether average associations should be printed after having been
+                                computed
+    :return learning_outcomes:  a dictionary of dictionaries. The first-level keys indicate the four different learning
+                                models ('ndl', 'HebbianLearner', 'probabilisticLearner', and 'HTM'). Each of these is a
+                                dictionary of dictionaries mapping each outcome to every cue: the values are tuples,
+                                each consisting of two numbers: the average associations over the specified number of
+                                iterations between a cue and an outcome, and its standard deviation.
+    """
+
+    training_trials = read_input_trials(input_file)
+
+    learning_outcomes = defaultdict(dict)
+
+    learning_outcomes['ndl'] = discriminative_learner(training_trials, n_iter, seed=seed, print_output=print_output)
+    learning_outcomes['HebbianLearner'] = hebbian_learner(training_trials, print_output=print_output)
+    learning_outcomes['probabilisticLearner'] = probabilistic_learner(training_trials, n_iter, seed=seed,
+                                                                      print_output=print_output)
+    learning_outcomes['HTM'] = hypothesis_testing_model(training_trials, n_iter, print_output=print_output)
+
+    return learning_outcomes
+
+
+########################################################################################################################
+
 if __name__ == '__main__':
 
-    discriminative_learner('./training_dataSet.txt', 200, seed=6)
-    print
-    hebbian_learner('./training_dataSet.txt')
-    print
-    probabilistic_learner('./training_dataSet.txt', 200, seed=6)
-    print
-    hypothesis_testing_model('./training_dataSet.txt', 200)
+    experiment_outcomes = cross_situational_learning('./training_dataSet.txt')
+
