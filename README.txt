@@ -13,5 +13,5 @@ For any question or doubt, please mail me at giovanni.cassani@uantwerpen.be.
 
 If you use this software for your own experiments, please cite this reference:
 
-Cassani G., Grimm R., Gillis S., and Daelemans W. (2016) "Constraining the search space in cross-situational word learning: Different models make different predictions." To appear in the Proceedings of the 38th Annual Meeting of the Cognitive Science Society, Philadelphia, PA.
+Cassani G., Grimm R., Gillis S., and Daelemans W. (2016) "Constraining the search space in cross-situational word learning: Different models make different predictions." In Papafragou, A., Grodner, D., Mirman, D., & Trueswell, J.C. (Eds.), Proceedings of the 38th Annual Meeting of the Cognitive Science Society, Philadelphia, PA.
 
