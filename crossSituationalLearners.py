@@ -1,5 +1,7 @@
 __author__ = 'GCassani'
 
+import os
+import argparse
 import numpy as np
 import random as rnd
 from collections import defaultdict, Counter
@@ -593,7 +595,38 @@ def cross_situational_learning(input_file, n_iter=200, seed=6, print_output=Fals
 
 ########################################################################################################################
 
+def main():
+
+    parser = argparse.ArgumentParser(description='Run cross-situational learning experiments.')
+
+    parser.add_argument('-i', '--input_file', required=True, dest='input_file',
+                        help='Specify the path to the input file.')
+    parser.add_argument('-n', '--num_iter', default=200, dest='n_iter',
+                        help='Specify the number of iterations.')
+    parser.add_argument('-s', '--seed', default=6, dest='seed',
+                        help='Specify the seed to replicate random outcomes.')
+    parser.add_argument('-v', '--verbose', action='store_true', dest='out',
+                        help='Specify the seed to replicate random outcomes.')
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.input_file):
+        raise ValueError("The path you provided does not exist. Please, provide the path to an existing file.")
+    else:
+        learning_outcomes = cross_situational_learning(args.input_file, n_iter=args.n_iter,
+                                                       seed=args.seed, print_output=args.out)
+
+    for algorithm in learning_outcomes:
+        print algorithm
+        print "\tOutcome-Cue: Mean (stdev)"
+        for w1 in learning_outcomes[algorithm]:
+            for w2 in learning_outcomes[algorithm][w1]:
+                mean, stdev = learning_outcomes[algorithm][w1][w2]
+                print "\t"+"-".join([w1,w2])+": "+str(mean)+' ('+str(stdev)+')'
+
+########################################################################################################################
+
+
 if __name__ == '__main__':
 
-    experiment_outcomes = cross_situational_learning('./training_dataSet.txt')
-
+    main()
