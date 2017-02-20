@@ -569,7 +569,7 @@ def cross_situational_learning(input_file, n_iter=200, seed=6, print_output=Fals
     :param n_iter:              an integer stating how many iterations need to be performed to evaluate each learner
     :param seed:                an integer to seed the random permutation of learning trials in the training set, for
                                 reproducibility
-    :param print_output:         a boolean specifying whether average associations should be printed after having been
+    :param print_output:        a boolean specifying whether average associations should be printed after having been
                                 computed
     :return learning_outcomes:  a dictionary of dictionaries. The first-level keys indicate the four different learning
                                 models ('ndl', 'HebbianLearner', 'probabilisticLearner', and 'HTM'). Each of these is a
